@@ -1,5 +1,3 @@
-# 文物照明保护—展示双目标优化工具 依赖
-# Python 3.10+（推荐 3.11）
 numpy>=2.0
 scipy>=1.10
 pandas>=2.0
@@ -8,6 +6,5 @@ openpyxl>=3.1
 streamlit>=1.35
 pymoo>=0.6
 colour-science>=0.4.5
-# luxpy 为 TM-30 备用实现（需要 numpy>=2.0）；若无法安装，colour-science 主实现仍可用
 luxpy>=1.12
 pytest>=8.0
