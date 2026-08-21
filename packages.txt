@@ -1,0 +1,3 @@
+# Streamlit Community Cloud 通过 packages.txt 在 Linux 基础镜像上执行 apt-get 安装
+# 中文字体：保证 PNG 图表（Pareto/SPD/权重图）中文正常渲染
+fonts-noto-cjk
