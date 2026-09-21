@@ -18,15 +18,17 @@ import streamlit as st
 from config import (
     ILLUMINANCE_MAX,
     ILLUMINANCE_MIN,
-    PH_DEFAULT,
-    PH_MAX,
-    PH_MIN,
     TIME_DEFAULT,
     TIME_MAX,
     TIME_MIN,
 )
 from models.color_metrics import backend_name
-from models.material_registry import ALL_NAMES, PIGMENT_NAMES, SUBSTRATE_NAMES, selected_specs
+from models.material_registry import (
+    PIGMENT_NAMES,
+    SUBSTRATE_NAMES,
+    get_material,
+    selected_specs,
+)
 from models.optimizer import NoFeasibleSolutionError, run_optimization
 from utils import export
 from utils.spectral_io import DataValidationError, SpectralData, load_spectral_data
@@ -93,7 +95,7 @@ def render_zone_a() -> SpectralData:
 # ---------------------------------------------------------------------------
 # B 文物输入
 # ---------------------------------------------------------------------------
-def render_zone_b() -> tuple[list[str], np.ndarray, float, float | None, str]:
+def render_zone_b() -> tuple[list[str], np.ndarray, float, str]:
     st.subheader("B · 文物输入")
     with st.expander("材料选择与面积比例（勾选参与计算的材料）", expanded=True):
         col_l, col_r = st.columns(2)
@@ -103,7 +105,7 @@ def render_zone_b() -> tuple[list[str], np.ndarray, float, float | None, str]:
                 st.checkbox(n, key=f"mat_{n}") for n in PIGMENT_NAMES
             ]
         with col_r:
-            st.markdown("**纸质基材**")
+            st.markdown("**基材（纸 / 绢）**")
             substrates = [
                 st.checkbox(n, key=f"mat_{n}") for n in SUBSTRATE_NAMES
             ]
@@ -133,20 +135,20 @@ def render_zone_b() -> tuple[list[str], np.ndarray, float, float | None, str]:
                         st.session_state[f"alpha_{name}"] = round(float(alpha[i]), 4)
                     st.rerun()
 
-    c1, c2, c3 = st.columns(3)
+    c1, c2 = st.columns(2)
     t = c1.number_input("展示时间 t (h)", min_value=TIME_MIN, max_value=TIME_MAX,
                         value=TIME_DEFAULT, step=10.0, format="%.1f", key="input_t")
     tone_label = c2.selectbox("画作色调类型", list(TONE_OPTIONS.keys()))
     tone = TONE_OPTIONS[tone_label]
 
-    has_substrate = any(n in SUBSTRATE_NAMES for n in selected)
-    pH = None
-    if has_substrate:
-        pH = c3.number_input("纸质基材 pH（全画作共用）", min_value=PH_MIN, max_value=PH_MAX,
-                             value=PH_DEFAULT, step=0.1, format="%.2f", key="input_ph")
-    else:
-        c3.caption("未选择纸质基材，无需 pH")
-    return selected, alpha, t, pH, tone
+    # 基材 pH 为固定属性（决议 R12）：仅作提示展示，不参与计算、不可编辑
+    selected_substrates = [n for n in selected if n in SUBSTRATE_NAMES]
+    if selected_substrates:
+        ph_hint = "、".join(
+            f"{name} pH {get_material(name).default_ph:g}" for name in selected_substrates
+        )
+        st.info(f"基材 pH 为各材料的固定属性，已内置于其模型公式中，无需输入：{ph_hint}")
+    return selected, alpha, t, tone
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +171,7 @@ def render_zone_c() -> dict:
 # ---------------------------------------------------------------------------
 # D 运行
 # ---------------------------------------------------------------------------
-def render_zone_d(spectral: SpectralData, selected, alpha, t, pH, tone, settings) -> None:
+def render_zone_d(spectral: SpectralData, selected, alpha, t, tone, settings) -> None:
     st.subheader("D · 运行")
     run_btn = st.button("开始优化", type="primary")
     if not run_btn:
@@ -180,9 +182,6 @@ def render_zone_d(spectral: SpectralData, selected, alpha, t, pH, tone, settings
         return
     if np.any(alpha < 0) or abs(float(np.sum(alpha)) - 1.0) > 1e-4:
         st.error(f"面积比例必须非负且总和为 1（当前 {float(np.sum(alpha)):.4f}），请修正或使用自动归一化")
-        return
-    if any(n in SUBSTRATE_NAMES for n in selected) and pH is None:
-        st.error("选中纸质基材但缺少 pH，无法运行")
         return
 
     materials = selected_specs(selected)
@@ -201,7 +200,6 @@ def render_zone_d(spectral: SpectralData, selected, alpha, t, pH, tone, settings
                 alpha=alpha,
                 t=t,
                 tone=tone,
-                pH=pH,
                 pop_size=settings["pop"],
                 n_gen=settings["gen"],
                 sbx_prob=settings["sbx"],
@@ -294,9 +292,9 @@ def render_zone_e(spectral: SpectralData) -> None:
 
 def main() -> None:
     spectral = render_zone_a()
-    selected, alpha, t, pH, tone = render_zone_b()
+    selected, alpha, t, tone = render_zone_b()
     settings = render_zone_c()
-    render_zone_d(spectral, selected, alpha, t, pH, tone, settings)
+    render_zone_d(spectral, selected, alpha, t, tone, settings)
     render_zone_e(spectral)
 
 

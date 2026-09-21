@@ -33,7 +33,7 @@ def setup():
 @pytest.fixture(scope="module")
 def result(setup):
     spectral, mats, alpha = setup
-    return run_optimization(spectral, mats, alpha, t=500.0, tone="warm", pH=7.0,
+    return run_optimization(spectral, mats, alpha, t=500.0, tone="warm",
                             pop_size=POP, n_gen=GEN, seed=SEED)
 
 
@@ -84,9 +84,9 @@ def test_t10_representatives(result):
 # T11 可复现性：相同 seed 与参数下结果可重复
 def test_t11_reproducibility(setup):
     spectral, mats, alpha = setup
-    r1 = run_optimization(spectral, mats, alpha, t=500.0, tone="warm", pH=7.0,
+    r1 = run_optimization(spectral, mats, alpha, t=500.0, tone="warm",
                           pop_size=POP, n_gen=GEN, seed=SEED)
-    r2 = run_optimization(spectral, mats, alpha, t=500.0, tone="warm", pH=7.0,
+    r2 = run_optimization(spectral, mats, alpha, t=500.0, tone="warm",
                           pop_size=POP, n_gen=GEN, seed=SEED)
     assert len(r1.pareto_df) == len(r2.pareto_df)
     np.testing.assert_allclose(
@@ -109,16 +109,22 @@ def test_no_feasible_solution(setup, monkeypatch):
 
     monkeypatch.setattr(opt, "compute_color_metrics", _boom)
     with pytest.raises(NoFeasibleSolutionError):
-        run_optimization(spectral, mats, alpha, t=500.0, tone="warm", pH=7.0,
+        run_optimization(spectral, mats, alpha, t=500.0, tone="warm",
                          pop_size=20, n_gen=5, seed=SEED)
 
 
-# T13 界面隔离：前端源码/页面不显示 TODO_REPLACE、initial_replaceable 等开发标记
+# T13 界面隔离：前端源码/页面不显示开发标记与后台元数据
 def test_t13_ui_isolation():
     app_src = (ROOT / "app.py").read_text(encoding="utf-8")
-    forbidden = ["TODO_REPLACE", "initial_replaceable", "占位", "待替换", "模型版本", "model_status"]
+    forbidden = ["TODO_REPLACE", "initial_replaceable", "占位", "待替换",
+                 "模型版本", "model_status", "TODO_"]
     for token in forbidden:
         assert token not in app_src, f"app.py 不应包含开发标记: {token}"
-    # 注册表元数据仅存在于后台，前端源码不得引用 model_status
+    # 后台元数据（model_status / default_ph）只存在于注册表，前端源码不得引用
     registry_src = (ROOT / "models" / "material_registry.py").read_text(encoding="utf-8")
-    assert "initial_replaceable" in registry_src  # 后台存在该状态
+    assert "model_status" in registry_src          # 后台存在模型状态元数据
+    assert "default_ph" in registry_src            # 后台存在基材固定 pH 元数据
+    # 基材公式模块不再保留任何占位/TODO 标记（已为正式模型）
+    substrate_src = (ROOT / "models" / "substrate_models.py").read_text(encoding="utf-8")
+    assert "TODO_REPLACE" not in substrate_src
+    assert "占位" not in substrate_src

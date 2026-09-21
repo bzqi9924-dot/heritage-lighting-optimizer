@@ -1,16 +1,19 @@
 # -*- coding: utf-8 -*-
-"""17 种材料注册表与模型版本元数据。
+"""18 种材料注册表与模型版本元数据。
 
-v3 第 5 节 / 第 8 节：
-- 有机颜料 9 种、无机颜料 3 种、纸质基材 5 种；
-- 五种基材后台元数据 model_status="initial_replaceable"，
-  该状态不得显示在 Streamlit 前端；正式模型替换后改为 "final"；
-- material_registry 负责按材料名称分派到对应 f 与 P（v3 第 6.5 节），
-  优化器中不得分别编写 17 套组合逻辑。
+组成（《基材公式补充.docx》到位后）：
+- 有机颜料 9 种、无机颜料 3 种（f/P 来自《公式集合_初版》）；
+- 基材 6 种：新闻纸、竹纸、宣纸、麻纸、桑皮纸、绢
+  （f/P 来自《基材公式补充.docx》**正式公式**，model_status="final"）。
+
+关键口径（《需求确认记录.md》决议 R10–R14）：
+- **pH 是各基材的固定属性**（公式在该 pH 下成立），不再是计算变量与界面输入项，
+  仅作界面只读提示（default_ph 字段）；
+- 照度符号：文档中的 E 即本项目其余部分的 I（lx）；
+- f(E,t) 负值按 0 处理（在 substrate_models.py 内实现）。
 
 可替换机制：f/P 按 (模块, 函数名) **动态解析**——替换 models/substrate_models.py
-中的函数（含运行期替换）后无需修改本注册表、UI、damage_chain.py 或 optimizer.py，
-新函数即刻生效（对应验收 T12）。
+中的函数后无需修改本注册表、UI、damage_chain.py 或 optimizer.py（对应验收 T12）。
 """
 from __future__ import annotations
 
@@ -31,39 +34,41 @@ class MaterialSpec:
     key: str                      # 稳定英文键（代码内部使用）
     name_zh: str                  # 中文显示名（UI 使用）
     category: str                 # "organic" / "inorganic" / "substrate"
-    kind: str                     # "pigment" / "paper"
+    kind: str                     # "pigment" / "paper" / "silk"
     f_module: ModuleType          # 包含 f 函数的模块
     f_name: str                   # f 函数名
     p_module: ModuleType          # 包含 P 函数的模块
     p_name: str                   # P 函数名
-    model_status: str             # "final" / "initial_replaceable"
+    model_status: str             # "final"（正式模型）
     version: str                  # 模型版本元数据
-    requires_ph: bool = False     # 是否需要 pH 输入
+    default_ph: float | None = None   # 基材固定 pH（仅界面提示，不参与计算）
 
-    def f_value(self, I, t, pH=None):
+    @property
+    def is_substrate(self) -> bool:
+        return self.category == "substrate"
+
+    def f_value(self, E, t):
+        """照度—时间损伤 f(E, t)。E 为照度（lx），t 为时间（h）。"""
         fn = getattr(self.f_module, self.f_name)
-        if self.requires_ph:
-            if pH is None:
-                raise ValueError(f"材料 {self.name_zh} 需要 pH 输入")
-            return float(fn(I, t, pH))
-        return float(fn(I, t))
+        return float(fn(E, t))
 
     def p_value(self, wavelength: np.ndarray) -> np.ndarray:
+        """光谱响应率 P(λ)。"""
         fn = getattr(self.p_module, self.p_name)
         return np.asarray(fn(wavelength), dtype=float)
 
 
 def _spec(key, name_zh, category, kind, f_mod, f_name, p_mod, p_name,
-          model_status, version, requires_ph=False):
+          model_status, version, default_ph=None):
     return MaterialSpec(
         key=key, name_zh=name_zh, category=category, kind=kind,
         f_module=f_mod, f_name=f_name, p_module=p_mod, p_name=p_name,
-        model_status=model_status, version=version, requires_ph=requires_ph,
+        model_status=model_status, version=version, default_ph=default_ph,
     )
 
 
 # ---------------------------------------------------------------------------
-# 注册表构建（17 种材料）
+# 注册表构建（18 种材料）
 # ---------------------------------------------------------------------------
 MATERIALS: list[MaterialSpec] = [
     # ---- 有机颜料（9） ----
@@ -80,12 +85,13 @@ MATERIALS: list[MaterialSpec] = [
     _spec("realgar", "雄黄", "inorganic", "pigment", inorg, "f_realgar", inorg, "P_realgar", "final", "v1"),
     _spec("red_lead", "铅丹", "inorganic", "pigment", inorg, "f_red_lead", inorg, "P_red_lead", "final", "v1"),
     _spec("cinnabar", "朱砂", "inorganic", "pigment", inorg, "f_cinnabar", inorg, "P_cinnabar", "final", "v1"),
-    # ---- 纸质基材（5，初版/可替换） ----
-    _spec("hemp_paper", "麻纸", "substrate", "paper", sub, "quantity_hemp_paper", sub, "response_hemp_paper", "initial_replaceable", "v1-placeholder", requires_ph=True),
-    _spec("mulberry_paper", "桑纸", "substrate", "paper", sub, "quantity_mulberry_paper", sub, "response_mulberry_paper", "initial_replaceable", "v1-placeholder", requires_ph=True),
-    _spec("newsprint", "新闻纸", "substrate", "paper", sub, "quantity_newsprint", sub, "response_newsprint", "initial_replaceable", "v1-placeholder", requires_ph=True),
-    _spec("xuan_paper", "宣纸", "substrate", "paper", sub, "quantity_xuan_paper", sub, "response_xuan_paper", "initial_replaceable", "v1-placeholder", requires_ph=True),
-    _spec("bamboo_paper", "竹纸", "substrate", "paper", sub, "quantity_bamboo_paper", sub, "response_bamboo_paper", "initial_replaceable", "v1-placeholder", requires_ph=True),
+    # ---- 基材（6，正式公式，pH 为固定属性） ----
+    _spec("newsprint", "新闻纸", "substrate", "paper", sub, "quantity_newsprint", sub, "response_newsprint", "final", "official-v1", default_ph=sub.PH_BY_SUBSTRATE["newsprint"]),
+    _spec("bamboo_paper", "竹纸", "substrate", "paper", sub, "quantity_bamboo_paper", sub, "response_bamboo_paper", "final", "official-v1", default_ph=sub.PH_BY_SUBSTRATE["bamboo_paper"]),
+    _spec("xuan_paper", "宣纸", "substrate", "paper", sub, "quantity_xuan_paper", sub, "response_xuan_paper", "final", "official-v1", default_ph=sub.PH_BY_SUBSTRATE["xuan_paper"]),
+    _spec("hemp_paper", "麻纸", "substrate", "paper", sub, "quantity_hemp_paper", sub, "response_hemp_paper", "final", "official-v1", default_ph=sub.PH_BY_SUBSTRATE["hemp_paper"]),
+    _spec("mulberry_paper", "桑皮纸", "substrate", "paper", sub, "quantity_mulberry_paper", sub, "response_mulberry_paper", "final", "official-v1", default_ph=sub.PH_BY_SUBSTRATE["mulberry_paper"]),
+    _spec("silk", "绢", "substrate", "silk", sub, "quantity_silk", sub, "response_silk", "final", "official-v1", default_ph=sub.PH_BY_SUBSTRATE["silk"]),
 ]
 
 MATERIALS_BY_KEY = {m.key: m for m in MATERIALS}
@@ -93,7 +99,7 @@ MATERIALS_BY_NAME = {m.name_zh: m for m in MATERIALS}
 
 ALL_NAMES = [m.name_zh for m in MATERIALS]
 PIGMENT_NAMES = [m.name_zh for m in MATERIALS if m.kind == "pigment"]
-SUBSTRATE_NAMES = [m.name_zh for m in MATERIALS if m.kind == "paper"]
+SUBSTRATE_NAMES = [m.name_zh for m in MATERIALS if m.category == "substrate"]
 
 
 def get_material(name_or_key: str) -> MaterialSpec:
@@ -107,3 +113,11 @@ def get_material(name_or_key: str) -> MaterialSpec:
 
 def selected_specs(names: list[str]) -> list[MaterialSpec]:
     return [get_material(n) for n in names]
+
+
+def substrate_ph_table() -> list[dict]:
+    """基材固定 pH 提示表（供界面展示，不参与计算）。"""
+    return [
+        {"材料": m.name_zh, "pH（固定属性）": m.default_ph}
+        for m in MATERIALS if m.category == "substrate"
+    ]

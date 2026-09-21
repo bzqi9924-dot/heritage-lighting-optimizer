@@ -1,3 +1,5 @@
+# Heritage Lighting Optimizer - dependencies
+# Python 3.10+ (3.11 recommended)
 numpy>=2.0
 scipy>=1.10
 pandas>=2.0
@@ -6,5 +8,6 @@ openpyxl>=3.1
 streamlit>=1.35
 pymoo>=0.6
 colour-science>=0.4.5
+# luxpy: fallback TM-30 backend (requires numpy>=2.0); optional - colour-science works alone
 luxpy>=1.12
 pytest>=8.0

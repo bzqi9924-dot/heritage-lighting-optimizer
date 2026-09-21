@@ -105,14 +105,12 @@ class HeritageLightingProblem(Problem):
         alpha: np.ndarray,
         t: float,
         tone: str,
-        pH: float | None = None,
     ):
         self.spectral = spectral
         self.materials = materials
         self.alpha = np.asarray(alpha, dtype=float)
         self.t = float(t)
         self.tone = tone
-        self.pH = pH
         super().__init__(
             n_var=11,
             n_obj=2,
@@ -153,7 +151,6 @@ class HeritageLightingProblem(Problem):
                 self.spectral.d55_normalized,
                 I,
                 self.t,
-                self.pH,
             )
             F = display_score(self.tone, I, cm.Rf, cm.Rg)
             f1[i] = d_relic
@@ -214,7 +211,6 @@ def _extract_representatives(
     alpha: np.ndarray,
     t: float,
     tone: str,
-    pH: float | None,
     X: np.ndarray,
     D: np.ndarray,
     F: np.ndarray,
@@ -255,7 +251,6 @@ def _extract_representatives(
                 spectral.d55_normalized,
                 I,
                 t,
-                pH,
                 float(a),
             )
             for m, a in zip(materials, alpha)
@@ -282,7 +277,6 @@ def run_optimization(
     alpha: np.ndarray,
     t: float,
     tone: str,
-    pH: float | None = None,
     pop_size: int = POP_SIZE,
     n_gen: int = N_GEN,
     sbx_prob: float = SBX_PROB,
@@ -295,7 +289,7 @@ def run_optimization(
     if abs(float(np.sum(alpha)) - 1.0) > 1e-6 or np.any(alpha < 0):
         raise ValueError("面积比例必须非负且总和为 1")
 
-    problem = HeritageLightingProblem(spectral, materials, alpha, t, tone, pH)
+    problem = HeritageLightingProblem(spectral, materials, alpha, t, tone)
     algorithm = NSGA2(
         pop_size=pop_size,
         sampling=WeightSampling(seed=seed),
@@ -358,7 +352,7 @@ def run_optimization(
         cm_list.append(compute_color_metrics(spectral.wavelength, S))
 
     representatives = _extract_representatives(
-        spectral, materials, alpha, t, tone, pH,
+        spectral, materials, alpha, t, tone,
         X_f, D, F_display, cm_list, spd_list,
     )
 
